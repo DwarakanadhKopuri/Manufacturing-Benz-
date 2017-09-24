@@ -1,0 +1,183 @@
+---
+title: "BENZ NEW"
+output: html_document
+---
+
+
+```{r}
+rm(list = ls(all=TRUE))
+```
+
+```{r}
+setwd("F:\\FD\\R\\BEnz")
+```
+
+```{r}
+train <- read.csv("train.csv",header = TRUE,sep = ",")
+test <- read.csv("test.csv",header = TRUE,sep = ",")
+```
+
+```{r}
+# isolate id and target variables
+train_id <- data.frame(ID=as.character(train$ID))
+train_labels <- data.frame(y=train$y)
+test_id <- data.frame(ID=as.character(test$ID))
+train$ID <- NULL
+train$y <- NULL
+test$ID <- NULL
+
+# combine features from train and test set 
+df_all <- rbind(train, test)
+
+# split groups of categorical and binary features
+categorical_vars = paste0("X", c(0,1,2,3,4,5,6,8))
+categorical_df <- df_all %>% select(one_of(categorical_vars))
+binary_df <- df_all %>% select(-one_of(categorical_vars))
+```
+
+```{r}
+##Feature Engineering
+##Now, let's apply some Feature Engineering techniques in order to compute some new features which are possibly better predictors. Every transformed column will be appended to the existing dataframe so that we don't lose any information.
+
+####One-Hot Encoding
+##The first technique which I want to apply is One-Hot encoding of the categorical variables. Since we don't know if there exists an implicit ordering of the categorical features, it is a reasonable way to create binary dummy variables
+```
+
+```{r}
+library(caret)
+
+# perform one-hot encoding 
+dmy <- dummyVars(~., data = categorical_df)
+ohe_features <- data.frame(predict(dmy, newdata = categorical_df))
+
+df_all <- cbind(df_all, ohe_features)
+binary_df <- cbind(binary_df, ohe_features)
+
+binary_df_train <- binary_df[1:nrow(train), ]
+binary_df_test <- binary_df[(nrow(train)+1):nrow(binary_df),]
+
+# visualize one-hot encoded features 
+image(as.matrix(ohe_features), col=c("white", "black"))
+n_levels <- apply(categorical_df, 2, function(x){length(unique(x))}) 
+n_levels <- n_levels/sum(n_levels)
+abline(h=cumsum(n_levels), col="red")
+text(0.05, cumsum(n_levels)-.025, names(n_levels), col="blue")
+abline(v=0.5, col="darkgreen")
+text(0.22, 0.025, "Train", col="darkgreen")
+text(0.72, 0.025, "Test", col="darkgreen")
+```
+
+```{r}
+###Hierarchical Clustering
+##In the next step, I would like to cluster the binary variables and use cluster indices of different clusterings as new features. To measure distance between binary vectors, I use Jaccard's distance.
+library(proxy)
+
+# compute distance matrix  
+jdist <- proxy::dist(binary_df, method = "Jaccard")
+
+# perform hierarchical clustering
+hc <- hclust(jdist)
+
+# get all clusterings with 2 up to max_k clusters
+max_k <- 50
+clusters <- data.frame(sapply(2:max_k, function(k){ cutree(hc,k) }))
+colnames(clusters) <- paste0("hc_group_", 2:max_k)
+
+# add lines for each cut in the dendrogram 
+plot(hc, hang = -1, labels = FALSE, xlab = "", ann=FALSE)
+cuts <- sort(hc$height, decreasing = TRUE)[2:max_k]
+abline(h=cuts, col=alpha("red",0.3))
+
+```
+
+```{r}
+##Principal Component Analysis (PCA)
+##Next, I would like to perform a PCA on the binary features (including one-hot encoded). Notice that unlike in the previous vesions of this kernel I retain all of the principal components.
+
+# perform pca
+res_pca <- prcomp(binary_df_train)
+pca_features <- predict(res_pca, newdata = binary_df)
+
+# proportion of explained variance 
+importance_pca <- summary(res_pca)$importance
+barplot(sort(importance_pca[2, importance_pca[2, ] > 0.005], decreasing = FALSE), horiz = TRUE, xlim=c(0,0.14), 
+        las=1, cex.names=0.6, main="Explained Variance by Principal Component", xlab="Proportion of explained variance")
+```
+
+```{r}
+##Next, let's look at the coefficients of the principal components
+
+# visualize the impact of the original variables on principal components
+theta <- seq(0, 2*pi, length.out = 100)
+circle <- data.frame(x = cos(theta)/4, y = sin(theta)/4)
+
+ggplot(circle,aes(x,y)) + geom_path() + 
+  geom_text(data=data.frame(res_pca$rotation, .names = row.names(res_pca$rotation)), 
+              mapping=aes(x = PC1, y = PC2, label = .names, colour = .names)) +
+  coord_fixed(ratio=1) + labs(x = "PC1", y = "PC2") + theme(legend.position="none")
+```
+
+```{r}
+ggplot(circle,aes(x,y)) + geom_path() + 
+  geom_text(data=data.frame(res_pca$rotation, .names = row.names(res_pca$rotation)), 
+              mapping=aes(x = PC3, y = PC4, label = .names, colour = .names)) +
+  coord_fixed(ratio=1) + labs(x = "PC3", y = "PC4") + theme(legend.position="none")
+```
+
+```{r}
+ggplot(circle,aes(x,y)) + geom_path() + 
+  geom_text(data=data.frame(res_pca$rotation, .names = row.names(res_pca$rotation)), 
+              mapping=aes(x = PC5, y = PC6, label = .names, colour = .names)) +
+  coord_fixed(ratio=1) + labs(x = "PC5", y = "PC6") + theme(legend.position="none")
+```
+
+```{r}
+##Update: I decreased the radius of the circle from 1.0 to 0.25
+
+##We see that for each of the plotted principal components, there are many features contributing a non-zero weight to its linear combination. None of the coefficients is significantly greater than 0.25.
+
+##Let's check if the principal components corresponds in any way with the target variable
+
+breaks <- 20
+pairs(res_pca$x[1:nrow(train), 1:5], col=alpha(rainbow(breaks)[as.numeric(cut(unlist(train_labels), breaks = breaks))], 0.2), asp=1)
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+
+
+## Including Plots
+
+You can also embed plots, for example:
+
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
